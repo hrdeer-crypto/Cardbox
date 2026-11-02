@@ -121,8 +121,8 @@
   <section class="view" id="view-settings">
     <div class="card">
       <h2>구글 연결</h2>
-      <label>OAuth 클라이언트 ID (Google Cloud Console)</label>
-      <input type="text" id="setClientId" placeholder="xxxxxxxx.apps.googleusercontent.com" autocomplete="off">
+      <div id="clientIdBlock"><label>OAuth 클라이언트 ID (Google Cloud Console)</label>
+      <input type="text" id="setClientId" placeholder="xxxxxxxx.apps.googleusercontent.com" autocomplete="off"></div>
       <div class="row" style="margin-top:10px">
         <button class="primary" id="btnLogin">구글 로그인</button>
         <button id="btnLogout">로그아웃</button>
@@ -151,7 +151,7 @@
 
     <div class="card">
       <button class="primary" id="btnSaveSettings" style="width:100%">설정 저장</button>
-      <div class="hint" style="margin-top:10px">버전 1.0 · 데이터(행사 목록, 썸네일)는 이 기기에만 저장되며, 원본 사진은 구글 드라이브에 있습니다.</div>
+      <div class="hint" style="margin-top:10px">버전 1.1 · 행사 목록은 구글 드라이브(명함 폴더)에 함께 저장되어 어느 기기에서 열어도 같습니다. 원본 사진은 구글 드라이브에 있습니다.</div>
     </div>
   </section>
 </main>
@@ -212,11 +212,13 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 /* =========================================================
    명함함 — Google Drive + Google Contacts 명함 보관 PWA
    ========================================================= */
+// 앱에 내장할 OAuth 클라이언트 ID (비어 있으면 설정 화면에서 입력)
+const BUILT_IN_CLIENT_ID = '';
+const SYNC_FILE = '_명함함_행사목록.json';
 const SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/contacts',
@@ -248,38 +250,49 @@ function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('sho
 function setStatus(el, msg, cls){ el.style.display = msg? 'block':'none'; el.className = 'status' + (cls? ' '+cls:''); el.innerHTML = msg||''; }
 const esc = s => String(s??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-/* ---------- Google 인증 (GIS 토큰 클라이언트) ---------- */
-let tokenClient = null, accessToken = null, tokenExp = 0, userEmail = store.get('userEmail','');
-function gisReady(){ return !!(window.google && google.accounts && google.accounts.oauth2); }
-function initTokenClient(){
-  if(!settings.clientId || !gisReady()) return false;
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: settings.clientId, scope: SCOPES, prompt: '',
-    callback: () => {}
+/* ---------- Google 인증 (리디렉션 방식 — 홈 화면 앱에서도 동작) ---------- */
+let userEmail = store.get('userEmail','');
+let tok = store.get('token', null); // {access, exp}
+const clientId = () => BUILT_IN_CLIENT_ID || settings.clientId;
+const redirectUri = () => location.origin + location.pathname;
+function tokenValid(margin=60){ return !!(tok && tok.access && Date.now() < tok.exp - margin*1000); }
+function login(interactive){
+  if(!clientId()){ showView('settings'); toast('클라이언트 ID가 필요합니다'); return; }
+  const p = new URLSearchParams({
+    client_id: clientId(), redirect_uri: redirectUri(), response_type: 'token', scope: SCOPES,
+    include_granted_scopes: 'true', state: 'cardbox', prompt: interactive ? 'select_account' : 'none'
   });
+  if(!interactive && userEmail) p.set('login_hint', userEmail);
+  try{ sessionStorage.setItem('silentTried', interactive ? '' : '1'); }catch(e){}
+  location.replace('https://accounts.google.com/o/oauth2/v2/auth?' + p.toString());
+}
+// 구글에서 돌아왔을 때 주소의 #access_token=... 처리
+function handleAuthReturn(){
+  if(!location.hash || location.hash.length < 2) return false;
+  const h = new URLSearchParams(location.hash.slice(1));
+  if(!h.get('access_token') && !h.get('error')) return false;
+  history.replaceState(null, '', location.pathname + location.search);
+  if(h.get('error')){
+    // prompt=none 실패(세션 없음 등) → 조용히 로그인 버튼만 보여줌
+    tok = null; store.set('token', null);
+    if(h.get('error') !== 'interaction_required' && h.get('error') !== 'login_required' && h.get('error') !== 'consent_required')
+      setStatus($('authStatus'), '로그인 실패: '+esc(h.get('error')), 'err');
+    return true;
+  }
+  tok = { access: h.get('access_token'), exp: Date.now() + (parseInt(h.get('expires_in'),10)||3600)*1000 };
+  store.set('token', tok);
+  try{ sessionStorage.setItem('silentTried',''); }catch(e){}
   return true;
 }
-function requestToken(interactive){
-  return new Promise((resolve, reject) => {
-    if(!tokenClient && !initTokenClient()) return reject(new Error('클라이언트 ID가 없거나 Google 스크립트가 아직 로드되지 않았습니다.'));
-    tokenClient.callback = (resp) => {
-      if(resp.error) return reject(new Error(resp.error_description || resp.error));
-      accessToken = resp.access_token; tokenExp = Date.now() + (resp.expires_in-60)*1000;
-      resolve(accessToken);
-    };
-    tokenClient.error_callback = (err) => reject(new Error(err?.message || err?.type || '로그인 취소'));
-    tokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' });
-  });
-}
 async function ensureToken(){
-  if(accessToken && Date.now() < tokenExp) return accessToken;
-  return requestToken(false);
+  if(tokenValid()) return tok.access;
+  throw new Error('NEED_LOGIN');
 }
 async function gfetch(url, opts={}, retry=true){
-  const tok = await ensureToken();
-  const headers = Object.assign({ Authorization: 'Bearer '+tok }, opts.headers||{});
+  const t = await ensureToken();
+  const headers = Object.assign({ Authorization: 'Bearer '+t }, opts.headers||{});
   const res = await fetch(url, Object.assign({}, opts, { headers }));
-  if(res.status===401 && retry){ accessToken=null; return gfetch(url, opts, false); }
+  if(res.status===401){ tok=null; store.set('token',null); renderAuth(); throw new Error('NEED_LOGIN'); }
   if(!res.ok){
     let msg = res.status+' '+res.statusText;
     try{ const j = await res.json(); msg = j.error?.message || JSON.stringify(j).slice(0,200); }catch(e){}
@@ -288,26 +301,76 @@ async function gfetch(url, opts={}, retry=true){
   if(res.status===204) return null;
   return res.json();
 }
-async function login(){
+function friendly(e){ return e.message==='NEED_LOGIN' ? '로그인이 만료되었습니다. 설정에서 구글 로그인을 다시 눌러주세요.' : e.message; }
+async function afterLogin(){
   try{
-    settings.clientId = $('setClientId').value.trim(); saveAll();
-    tokenClient = null;
-    await requestToken(true);
     const me = await gfetch('https://www.googleapis.com/oauth2/v3/userinfo');
     userEmail = me.email || ''; store.set('userEmail', userEmail);
-    renderAuth(); toast('로그인 완료');
-  }catch(e){ setStatus($('authStatus'), '로그인 실패: '+esc(e.message), 'err'); }
+    renderAuth();
+    await syncPull();
+  }catch(e){ console.warn(e); renderAuth(); }
 }
 function logout(){
-  if(accessToken && gisReady()) try{ google.accounts.oauth2.revoke(accessToken, ()=>{}); }catch(e){}
-  accessToken=null; tokenExp=0; userEmail=''; store.set('userEmail',''); renderAuth(); toast('로그아웃');
+  tok=null; store.set('token',null); userEmail=''; store.set('userEmail',''); renderAuth(); toast('로그아웃');
 }
 function renderAuth(){
-  $('acct').textContent = userEmail || '로그인 필요';
-  const ok = !!userEmail;
-  setStatus($('authStatus'), ok ? `연결됨: ${esc(userEmail)}` : (settings.clientId ? '로그인 버튼을 눌러 구글 계정을 연결하세요.' : '먼저 클라이언트 ID를 입력하세요. (설치 가이드 1단계)'), ok?'ok':'warn');
+  const ok = !!userEmail && tokenValid();
+  $('acct').textContent = userEmail ? (tokenValid()? userEmail : userEmail+' (재로그인 필요)') : '로그인 필요';
+  setStatus($('authStatus'), ok ? `연결됨: ${esc(userEmail)}` : (clientId() ? (userEmail ? '로그인이 만료되었습니다. 구글 로그인을 눌러주세요.' : '구글 로그인을 눌러 계정을 연결하세요.') : '먼저 클라이언트 ID를 입력하세요. (설치 가이드 1단계)'), ok?'ok':'warn');
   $('btnShoot').classList.toggle('disabled', !ok);
+  $('btnLogin').textContent = userEmail && !tokenValid() ? '구글 로그인 (다시)' : '구글 로그인';
 }
+
+/* ---------- 행사 목록 드라이브 동기화 ---------- */
+let syncTimer = null;
+function exportState(){
+  return { updatedAt: store.get('eventsUpdatedAt', 0), currentEvId,
+    events: events.map(ev => Object.assign({}, ev, { cards: ev.cards.map(c => { const d = Object.assign({}, c); delete d.thumb; delete d.ocrB64; return d; }) })) };
+}
+async function syncPush(){
+  if(!tokenValid()) return;
+  try{
+    const rootId = await findOrCreateFolder(settings.root, null);
+    const body = JSON.stringify(exportState());
+    if(!settings.syncFileId){
+      const q = `name = '${SYNC_FILE}' and '${rootId}' in parents and trashed = false`;
+      const r = await gfetch('https://www.googleapis.com/drive/v3/files?fields=files(id)&q='+encodeURIComponent(q));
+      settings.syncFileId = r.files?.[0]?.id || null;
+    }
+    if(settings.syncFileId){
+      await gfetch(`https://www.googleapis.com/upload/drive/v3/files/${settings.syncFileId}?uploadType=media`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body });
+    }else{
+      const boundary = 'cardbox_'+uid();
+      const meta = { name: SYNC_FILE, parents:[rootId], mimeType:'application/json' };
+      const mp = new Blob([`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n`, body, `\r\n--${boundary}--`]);
+      const r = await gfetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', { method:'POST', headers:{'Content-Type':`multipart/related; boundary=${boundary}`}, body: mp });
+      settings.syncFileId = r.id;
+    }
+    store.set('settings', settings);
+  }catch(e){ console.warn('sync push', e.message); }
+}
+async function syncPull(){
+  if(!tokenValid()) return;
+  try{
+    const rootId = await findOrCreateFolder(settings.root, null);
+    const q = `name = '${SYNC_FILE}' and '${rootId}' in parents and trashed = false`;
+    const r = await gfetch('https://www.googleapis.com/drive/v3/files?fields=files(id)&q='+encodeURIComponent(q));
+    const id = r.files?.[0]?.id; if(!id) return;
+    settings.syncFileId = id;
+    const remote = await gfetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`);
+    const localAt = store.get('eventsUpdatedAt', 0);
+    if(remote && remote.events && (remote.updatedAt||0) > localAt){
+      // 원격이 더 최신 → 로컬 썸네일은 유지하면서 병합
+      const thumbs = {}; events.forEach(ev => ev.cards.forEach(c => { if(c.thumb) thumbs[c.id]=c.thumb; }));
+      events = remote.events.map(ev => Object.assign({}, ev, { cards: (ev.cards||[]).map(c => Object.assign({}, c, { thumb: thumbs[c.id]||'' })) }));
+      if(!events.find(e=>e.id===currentEvId)) currentEvId = remote.currentEvId || events[0]?.id || null;
+      store.set('events', events); store.set('currentEvId', currentEvId); store.set('eventsUpdatedAt', remote.updatedAt);
+      renderAll();
+    }else if(!remote || (remote.updatedAt||0) < localAt){ syncPush(); }
+    store.set('settings', settings);
+  }catch(e){ console.warn('sync pull', e.message); }
+}
+function markChanged(){ store.set('eventsUpdatedAt', Date.now()); clearTimeout(syncTimer); syncTimer = setTimeout(syncPush, 1500); }
 
 /* ---------- Drive: 폴더 ---------- */
 async function findOrCreateFolder(name, parentId){
@@ -374,7 +437,7 @@ async function uploadToDrive(blob, name, folderId){
   const boundary = 'cardbox_'+uid();
   const head = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: image/jpeg\r\n\r\n`;
   const body = new Blob([head, blob, `\r\n--${boundary}--`]);
-  return gfetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', {
+  return gfetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,thumbnailLink', {
     method:'POST', headers:{'Content-Type':`multipart/related; boundary=${boundary}`}, body
   });
 }
@@ -383,7 +446,7 @@ async function uploadToDrive(blob, name, folderId){
 let seq = 0;
 async function handleFiles(files){
   const ev = currentEvent();
-  if(!userEmail){ toast('먼저 설정에서 구글 로그인을 해주세요'); showView('settings'); return; }
+  if(!tokenValid()){ toast('구글 로그인이 필요합니다'); showView('settings'); return; }
   if(!ev){ openEvModal(null); return; }
   const st = $('shootStatus');
   let done=0, fail=0;
@@ -399,12 +462,12 @@ async function handleFiles(files){
       const d = new Date(); seq = (seq%99)+1;
       const fname = `${todayStr()}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}_${sanitize(ev.name)}_${pad(seq)}.jpg`;
       const r = await uploadToDrive(blob, fname, folderId);
-      card.name = r.name; card.driveId = r.id; card.webViewLink = r.webViewLink; card.status='ok';
+      card.name = r.name; card.driveId = r.id; card.webViewLink = r.webViewLink; card.thumbLink = r.thumbnailLink||''; card.status='ok';
       done++;
-      saveAll(); renderCards();
+      saveAll(); markChanged(); renderCards();
       if(settings.autoOcr && settings.anthropicKey){ runOcr(card).catch(()=>{}); }
     }catch(e){
-      card.status='err'; card.error = e.message; fail++; saveAll(); renderCards();
+      card.status='err'; card.error = friendly(e); fail++; saveAll(); renderCards();
     }
   }
   setStatus(st, fail? `${done}장 저장, ${fail}장 실패 (목록에서 다시 시도)` : `${done}장 저장 완료 → ${esc(pathOf(ev).join(' / '))}`, fail?'err':'ok');
@@ -441,7 +504,7 @@ async function runOcr(card){
   if(!m){ card.ocrStatus='err'; renderCards(); throw new Error('인식 결과를 해석하지 못했습니다.'); }
   const data = JSON.parse(m[0]);
   card.contact = Object.assign(card.contact||{}, data);
-  card.ocrStatus='ok'; saveAll(); renderCards();
+  card.ocrStatus='ok'; saveAll(); markChanged(); renderCards();
   return data;
 }
 
@@ -514,9 +577,9 @@ async function saveEvModal(){
     const ev = events.find(e=>e.id===editingEvId);
     const changed = ev.name!==name || ev.date!==date;
     ev.name = name; ev.date = date;
-    if(changed && ev.folderId && userEmail){
+    if(changed && ev.folderId && tokenValid()){
       try{ setStatus(st,'<span class="spin"></span>드라이브 폴더 이동 중…','warn'); $('evSave').disabled=true; await ensureEventFolder(ev); }
-      catch(e){ setStatus(st,'폴더 이동 실패: '+esc(e.message)+' (다음 업로드 때 다시 시도됩니다)','err'); ev.monthFolderId=null; }
+      catch(e){ setStatus(st,'폴더 이동 실패: '+esc(friendly(e))+' (다음 업로드 때 다시 시도됩니다)','err'); ev.monthFolderId=null; }
       finally{ $('evSave').disabled=false; }
     }
     if(changed) ev.groupResourceName = null; // 라벨은 새 이름으로 다시 생성
@@ -524,7 +587,7 @@ async function saveEvModal(){
     const ev = { id: uid(), name, date, folderId:null, monthFolderId:null, groupResourceName:null, cards:[] };
     events.unshift(ev); currentEvId = ev.id;
   }
-  saveAll(); renderAll(); $('evModal').classList.remove('open');
+  saveAll(); markChanged(); renderAll(); $('evModal').classList.remove('open');
 }
 function deleteEv(){
   if(!editingEvId) return;
@@ -532,14 +595,14 @@ function deleteEv(){
   if(!window._confirmDel || window._confirmDel!==editingEvId){ window._confirmDel = editingEvId; setStatus($('evModalStatus'),`"${esc(ev.name)}"을(를) 목록에서 지우려면 삭제 버튼을 한 번 더 누르세요. 드라이브의 사진과 연락처는 그대로 남습니다.`,'warn'); return; }
   events = events.filter(e=>e.id!==editingEvId);
   if(currentEvId===editingEvId) currentEvId = events[0]?.id || null;
-  window._confirmDel=null; saveAll(); renderAll(); $('evModal').classList.remove('open');
+  window._confirmDel=null; saveAll(); markChanged(); renderAll(); $('evModal').classList.remove('open');
 }
 
 /* ---------- 연락처 시트 ---------- */
 let ctCard = null;
 function openContact(card){
   ctCard = card; const ev = currentEvent();
-  $('ctPreview').src = card.thumb || '';
+  $('ctPreview').src = card.thumb || card.thumbLink || '';
   $('ctOpenDrive').href = card.webViewLink || '#';
   $('ctOpenDrive').style.visibility = card.webViewLink ? 'visible' : 'hidden';
   fillContactForm(card.contact||{});
@@ -561,7 +624,7 @@ async function doOcrFromSheet(){
   if(!ctCard) return;
   setStatus($('ctStatus'),'<span class="spin"></span>명함 인식 중…','warn'); $('ctOcr').disabled=true;
   try{ const d = await runOcr(ctCard); fillContactForm(d); setStatus($('ctStatus'),'인식 완료 — 내용을 확인하고 저장하세요.','ok'); }
-  catch(e){ setStatus($('ctStatus'), esc(e.message), 'err'); }
+  catch(e){ setStatus($('ctStatus'), esc(friendly(e)), 'err'); }
   finally{ $('ctOcr').disabled=false; }
 }
 async function doSaveContact(){
@@ -571,10 +634,10 @@ async function doSaveContact(){
   try{
     ctCard.contact = c;
     ctCard.contactResourceName = await saveContact(ev, ctCard, c);
-    saveAll(); renderCards();
+    saveAll(); markChanged(); renderCards();
     setStatus($('ctStatus'),`저장 완료 — 연락처 라벨 "명함 ${ev.date.slice(0,7)} ${esc(ev.name)}"`,'ok');
     toast('구글 연락처에 저장되었습니다');
-  }catch(e){ setStatus($('ctStatus'),'저장 실패: '+esc(e.message),'err'); }
+  }catch(e){ setStatus($('ctStatus'),'저장 실패: '+esc(friendly(e)),'err'); }
   finally{ $('ctSave').disabled=false; }
 }
 
@@ -596,9 +659,9 @@ function renderCards(){
     const el = document.createElement('div'); el.className='item';
     const badge = c.status==='run' ? '<span class="badge run">업로드 중</span>' : c.status==='err' ? '<span class="badge err">실패</span>' : '<span class="badge ok">드라이브 저장</span>';
     const ct = c.contactResourceName ? '<span class="badge ok">연락처 저장됨</span>' : c.ocrStatus==='run' ? '<span class="badge run">인식 중</span>' : c.contact?.name ? `<span class="badge">${esc(c.contact.name)}</span>` : '';
-    el.innerHTML = `<img src="${c.thumb||''}" alt=""><div class="meta"><div class="t">${esc(c.contact?.name || c.name || '처리 중…')}${c.contact?.company? ' · '+esc(c.contact.company):''}</div><div class="s">${badge} ${ct}${c.status==='err'?'<br>'+esc(c.error||''):''}</div></div>`;
+    el.innerHTML = `<img src="${c.thumb||c.thumbLink||''}" alt=""><div class="meta"><div class="t">${esc(c.contact?.name || c.name || '처리 중…')}${c.contact?.company? ' · '+esc(c.contact.company):''}</div><div class="s">${badge} ${ct}${c.status==='err'?'<br>'+esc(c.error||''):''}</div></div>`;
     const btn = document.createElement('button'); btn.className='ghost';
-    if(c.status==='err'){ btn.textContent='삭제'; btn.onclick=()=>{ ev.cards = ev.cards.filter(x=>x!==c); saveAll(); renderCards(); }; }
+    if(c.status==='err'){ btn.textContent='삭제'; btn.onclick=()=>{ ev.cards = ev.cards.filter(x=>x!==c); saveAll(); markChanged(); renderCards(); }; }
     else { btn.textContent = c.contactResourceName ? '보기' : '연락처'; btn.disabled = c.status!=='ok'; btn.onclick=()=>openContact(c); }
     el.appendChild(btn); list.appendChild(el);
   }
@@ -614,6 +677,7 @@ function renderEvList(){
   }
 }
 function renderSettings(){
+  $('clientIdBlock').style.display = BUILT_IN_CLIENT_ID ? 'none' : 'block';
   $('setClientId').value = settings.clientId; $('setRoot').value = settings.root; $('setMaxPx').value = settings.maxPx;
   $('setAnthropicKey').value = settings.anthropicKey; $('setModel').value = settings.model; $('setAutoOcr').checked = !!settings.autoOcr;
 }
@@ -625,31 +689,40 @@ function showView(v){
 
 /* ---------- 이벤트 바인딩 ---------- */
 document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>showView(b.dataset.view));
-$('evSelect').onchange = e => { currentEvId = e.target.value; saveAll(); renderEvSelect(); renderCards(); };
+$('evSelect').onchange = e => { currentEvId = e.target.value; saveAll(); markChanged(); renderEvSelect(); renderCards(); };
 $('btnNewEv').onclick = () => openEvModal(null);
 $('btnNewEv2').onclick = () => openEvModal(null);
 $('evCancel').onclick = () => { $('evModal').classList.remove('open'); window._confirmDel=null; };
 $('evSave').onclick = saveEvModal;
 $('evDelete').onclick = deleteEv;
 $('evName').oninput = updateFolderPreview; $('evDate').onchange = updateFolderPreview;
-$('btnShoot').onclick = () => { if(!userEmail){ showView('settings'); toast('먼저 구글 로그인을 해주세요'); return; } if(!currentEvent()){ openEvModal(null); return; } $('fileInput').click(); };
-$('btnGallery').onclick = () => { if(!userEmail){ showView('settings'); return; } if(!currentEvent()){ openEvModal(null); return; } $('fileInputGallery').click(); };
+$('btnShoot').onclick = () => { if(!tokenValid()){ showView('settings'); toast('먼저 구글 로그인을 해주세요'); return; } if(!currentEvent()){ openEvModal(null); return; } $('fileInput').click(); };
+$('btnGallery').onclick = () => { if(!tokenValid()){ showView('settings'); return; } if(!currentEvent()){ openEvModal(null); return; } $('fileInputGallery').click(); };
 $('fileInput').onchange = e => { const f=[...e.target.files]; e.target.value=''; if(f.length) handleFiles(f); };
 $('fileInputGallery').onchange = e => { const f=[...e.target.files]; e.target.value=''; if(f.length) handleFiles(f); };
-$('btnLogin').onclick = login; $('btnLogout').onclick = logout;
+$('btnLogin').onclick = () => { settings.clientId = $('setClientId').value.trim(); saveAll(); login(true); }; $('btnLogout').onclick = logout;
 $('btnSaveSettings').onclick = () => {
   settings.clientId = $('setClientId').value.trim(); settings.root = sanitize($('setRoot').value)||'명함';
   settings.maxPx = parseInt($('setMaxPx').value,10)||0; settings.anthropicKey = $('setAnthropicKey').value.trim();
   settings.model = $('setModel').value.trim()||'claude-haiku-5-5'; settings.autoOcr = $('setAutoOcr').checked;
-  folderCache = {}; tokenClient=null; saveAll(); renderAll(); toast('설정 저장됨');
+  folderCache = {}; settings.syncFileId = null; saveAll(); renderAll(); toast('설정 저장됨');
 };
 $('ctCancel').onclick = () => $('ctModal').classList.remove('open');
 $('ctOcr').onclick = doOcrFromSheet;
 $('ctSave').onclick = doSaveContact;
 document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => { if(e.target===m) m.classList.remove('open'); }));
 
+const returned = handleAuthReturn();
 renderAll();
-if(!settings.clientId) showView('settings');
+if(returned && tokenValid()){ afterLogin(); toast('로그인 완료'); }
+else if(!clientId()) showView('settings');
+else if(!tokenValid()){
+  // 이전에 로그인한 적이 있으면 조용히 재로그인 시도 (한 번만)
+  let tried=''; try{ tried = sessionStorage.getItem('silentTried')||''; }catch(e){}
+  if(userEmail && !tried) login(false); else showView('settings');
+}else{ syncPull(); }
+// 앱을 다시 열었을 때 토큰이 10분 미만 남았으면 조용히 갱신
+document.addEventListener('visibilitychange', () => { if(document.visibilityState==='visible' && userEmail && tok && !tokenValid(600)){ login(false); } });
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>

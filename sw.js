@@ -1,5 +1,5 @@
 // 명함함 서비스 워커 — 앱 셸만 캐시, API 호출은 항상 네트워크
-const CACHE = 'cardbox-v1';
+const CACHE = 'cardbox-v2';
 const SHELL = ['./', './index.html', './manifest.json', './icon-180.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
