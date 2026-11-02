@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f4e79">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="명함함">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
+<title>명함함 — 행사별 명함 보관</title>
+<style>
+  :root{
+    --navy:#1f4e79; --navy-d:#163a5b; --bg:#f4f6f9; --card:#fff; --line:#e1e6ec;
+    --text:#1c2733; --muted:#6b7a8a; --ok:#1e8e5a; --warn:#b7791f; --err:#c0392b;
+    --r:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",Segoe UI,Roboto,sans-serif;font-size:16px;-webkit-text-size-adjust:100%}
+  body{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+  header{position:sticky;top:0;z-index:5;background:var(--navy);color:#fff;padding:calc(12px + env(safe-area-inset-top)) 16px 12px;display:flex;align-items:center;justify-content:space-between}
+  header h1{font-size:18px;margin:0;font-weight:700;letter-spacing:-.2px}
+  header .acct{font-size:12px;opacity:.9;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  main{padding:16px;max-width:680px;margin:0 auto}
+  .view{display:none}.view.active{display:block}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px}
+  .card h2{font-size:15px;margin:0 0 10px;color:var(--navy)}
+  label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+  input[type=text],input[type=date],input[type=password],select,textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;font-size:16px;background:#fff;color:var(--text)}
+  textarea{min-height:70px;resize:vertical}
+  .row{display:flex;gap:10px;align-items:center}
+  .row>*{flex:1}
+  button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:11px 14px;background:#e9eef4;color:var(--text)}
+  button.primary{background:var(--navy);color:#fff}
+  button.ghost{background:transparent;color:var(--navy);padding:6px 8px}
+  button.danger{background:#fdecea;color:var(--err)}
+  button:disabled{opacity:.5;cursor:default}
+  .big-cam{display:block;width:100%;padding:26px 16px;font-size:20px;font-weight:700;border-radius:18px;background:var(--navy);color:#fff;text-align:center;margin:12px 0}
+  .big-cam small{display:block;font-size:13px;font-weight:400;opacity:.85;margin-top:4px}
+  .big-cam.disabled{background:#9fb0c3}
+  .hint{font-size:13px;color:var(--muted);line-height:1.5}
+  .status{font-size:13px;padding:8px 10px;border-radius:8px;background:#f0f4f8;color:var(--muted);margin-top:8px;word-break:break-all}
+  .status.ok{background:#e8f5ee;color:var(--ok)}.status.err{background:#fdecea;color:var(--err)}.status.warn{background:#fff6e5;color:var(--warn)}
+  nav.tabs{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:5}
+  nav.tabs button{flex:1;background:none;border-radius:0;padding:12px 4px 10px;font-size:12px;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px}
+  nav.tabs button.active{color:var(--navy);font-weight:700}
+  nav.tabs svg{width:22px;height:22px}
+  .list{display:flex;flex-direction:column;gap:10px}
+  .item{display:flex;gap:12px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px}
+  .item img{width:64px;height:48px;object-fit:cover;border-radius:6px;background:#dde3ea;flex:none}
+  .item .meta{flex:1;min-width:0}
+  .item .meta .t{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item .meta .s{font-size:12px;color:var(--muted);margin-top:2px}
+  .badge{display:inline-block;font-size:11px;padding:2px 7px;border-radius:999px;background:#eef2f7;color:var(--muted)}
+  .badge.ok{background:#e8f5ee;color:var(--ok)}.badge.err{background:#fdecea;color:var(--err)}.badge.run{background:#fff6e5;color:var(--warn)}
+  .ev{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+  .ev:last-child{border-bottom:0}
+  .ev .n{font-weight:600}.ev .d{font-size:12px;color:var(--muted);margin-top:2px}
+  .modal{position:fixed;inset:0;background:rgba(10,20,30,.55);display:none;align-items:flex-end;justify-content:center;z-index:20}
+  .modal.open{display:flex}
+  .sheet{background:#fff;width:100%;max-width:680px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+  .sheet h3{margin:0 0 8px;font-size:17px;color:var(--navy)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .preview{width:100%;max-height:200px;object-fit:contain;border-radius:10px;background:#eef2f7;margin-bottom:8px}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid #ccd;border-top-color:var(--navy);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px;margin-right:6px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));background:#1c2733;color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s;z-index:30;pointer-events:none;max-width:90%}
+  .toast.show{opacity:.95}
+  .empty{text-align:center;color:var(--muted);font-size:14px;padding:22px 0}
+  code{background:#eef2f7;padding:1px 5px;border-radius:4px;font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <h1>명함함</h1>
+  <div class="acct" id="acct">로그인 필요</div>
+</header>
+
+<main>
+  <!-- ===== 촬영 ===== -->
+  <section class="view active" id="view-shoot">
+    <div class="card">
+      <h2>행사 선택</h2>
+      <div class="row">
+        <select id="evSelect"></select>
+        <button id="btnNewEv" style="flex:0 0 auto">+ 새 행사</button>
+      </div>
+      <div class="hint" id="evPath" style="margin-top:8px"></div>
+    </div>
+
+    <button class="big-cam" id="btnShoot">
+      명함 촬영
+      <small>촬영 즉시 드라이브 행사 폴더로 저장됩니다</small>
+    </button>
+    <input type="file" id="fileInput" accept="image/*" capture="environment" multiple hidden>
+    <input type="file" id="fileInputGallery" accept="image/*" multiple hidden>
+    <div class="row" style="margin-top:-4px">
+      <button id="btnGallery">갤러리에서 선택</button>
+    </div>
+    <div id="shootStatus" class="status" style="display:none"></div>
+
+    <div class="card" style="margin-top:14px">
+      <h2>이 행사의 명함 <span class="badge" id="cardCount">0</span></h2>
+      <div class="list" id="cardList"></div>
+    </div>
+  </section>
+
+  <!-- ===== 행사 ===== -->
+  <section class="view" id="view-events">
+    <div class="card">
+      <h2>행사 목록</h2>
+      <div class="hint">행사 이름이나 날짜를 바꾸면 드라이브 폴더도 함께 이동/변경됩니다.</div>
+      <div id="evList"></div>
+      <button class="primary" id="btnNewEv2" style="width:100%;margin-top:12px">+ 새 행사 만들기</button>
+    </div>
+  </section>
+
+  <!-- ===== 설정 ===== -->
+  <section class="view" id="view-settings">
+    <div class="card">
+      <h2>구글 연결</h2>
+      <label>OAuth 클라이언트 ID (Google Cloud Console)</label>
+      <input type="text" id="setClientId" placeholder="xxxxxxxx.apps.googleusercontent.com" autocomplete="off">
+      <div class="row" style="margin-top:10px">
+        <button class="primary" id="btnLogin">구글 로그인</button>
+        <button id="btnLogout">로그아웃</button>
+      </div>
+      <div id="authStatus" class="status"></div>
+    </div>
+
+    <div class="card">
+      <h2>저장 규칙</h2>
+      <label>드라이브 최상위 폴더명</label>
+      <input type="text" id="setRoot" value="명함">
+      <label>이미지 압축 (긴 변 최대 px, 0 = 원본)</label>
+      <input type="text" id="setMaxPx" value="2000" inputmode="numeric">
+      <div class="hint" style="margin-top:8px">폴더 구조: <code>명함 / 2026 / 11월 / 행사명</code>. 압축은 OCR 품질을 유지하면서 용량을 1/3 이하로 줄입니다.</div>
+    </div>
+
+    <div class="card">
+      <h2>명함 인식 (선택)</h2>
+      <div class="hint">Anthropic API 키를 넣으면 촬영한 명함에서 이름·회사·이메일·전화를 추출해 구글 연락처에 저장할 수 있습니다. 키는 이 기기 브라우저에만 저장됩니다.</div>
+      <label>Anthropic API 키</label>
+      <input type="password" id="setAnthropicKey" placeholder="sk-ant-..." autocomplete="off">
+      <label>모델</label>
+      <input type="text" id="setModel" value="claude-haiku-5-5">
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px"><input type="checkbox" id="setAutoOcr" style="width:auto"> 업로드 후 자동으로 인식 실행</label>
+    </div>
+
+    <div class="card">
+      <button class="primary" id="btnSaveSettings" style="width:100%">설정 저장</button>
+      <div class="hint" style="margin-top:10px">버전 1.0 · 데이터(행사 목록, 썸네일)는 이 기기에만 저장되며, 원본 사진은 구글 드라이브에 있습니다.</div>
+    </div>
+  </section>
+</main>
+
+<nav class="tabs">
+  <button data-view="shoot" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h3l2-3h6l2 3h3v12H4z"/><circle cx="12" cy="13" r="3.5"/></svg>촬영</button>
+  <button data-view="events"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>행사</button>
+  <button data-view="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>설정</button>
+</nav>
+
+<!-- 행사 편집 시트 -->
+<div class="modal" id="evModal">
+  <div class="sheet">
+    <h3 id="evModalTitle">새 행사</h3>
+    <label>행사명</label>
+    <input type="text" id="evName" placeholder="예: Collision 2026, BC Tech Summit">
+    <label>행사 날짜 (폴더의 연도·월 기준, 나중에 수정 가능)</label>
+    <input type="date" id="evDate">
+    <div class="hint" id="evFolderPreview" style="margin-top:8px"></div>
+    <div id="evModalStatus" class="status" style="display:none"></div>
+    <div class="row" style="margin-top:14px">
+      <button id="evCancel">취소</button>
+      <button class="primary" id="evSave">저장</button>
+    </div>
+    <button class="danger" id="evDelete" style="width:100%;margin-top:10px;display:none">이 행사를 목록에서 삭제 (드라이브 파일은 유지)</button>
+  </div>
+</div>
+
+<!-- 연락처 시트 -->
+<div class="modal" id="ctModal">
+  <div class="sheet">
+    <h3>연락처 저장</h3>
+    <img id="ctPreview" class="preview" alt="">
+    <div id="ctStatus" class="status" style="display:none"></div>
+    <div class="row">
+      <button id="ctOcr">AI로 다시 인식</button>
+      <a id="ctOpenDrive" href="#" target="_blank" rel="noopener" style="flex:1;text-align:center;font-size:14px;color:var(--navy)">드라이브에서 열기</a>
+    </div>
+    <div class="grid2">
+      <div><label>이름</label><input type="text" id="cName"></div>
+      <div><label>영문 이름</label><input type="text" id="cNameEn"></div>
+      <div><label>회사</label><input type="text" id="cCompany"></div>
+      <div><label>직함</label><input type="text" id="cTitle"></div>
+      <div><label>부서</label><input type="text" id="cDept"></div>
+      <div><label>휴대전화</label><input type="text" id="cMobile" inputmode="tel"></div>
+      <div><label>사무실 전화</label><input type="text" id="cPhone" inputmode="tel"></div>
+      <div><label>이메일</label><input type="text" id="cEmail" inputmode="email"></div>
+    </div>
+    <label>웹사이트</label><input type="text" id="cWeb">
+    <label>주소</label><input type="text" id="cAddr">
+    <label>메모</label><textarea id="cNote"></textarea>
+    <div class="row" style="margin-top:14px">
+      <button id="ctCancel">닫기</button>
+      <button class="primary" id="ctSave">구글 연락처에 저장</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+/* =========================================================
+   명함함 — Google Drive + Google Contacts 명함 보관 PWA
+   ========================================================= */
+const SCOPES = [
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/contacts',
+  'https://www.googleapis.com/auth/userinfo.email'
+].join(' ');
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
+
+/* ---------- 저장소 (localStorage) ---------- */
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v==null? d : JSON.parse(v);}catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){ console.warn('storage', e); } }
+};
+let settings = Object.assign({
+  clientId:'', root:'명함', maxPx:2000, anthropicKey:'', model:'claude-haiku-5-5', autoOcr:false
+}, store.get('settings', {}));
+let events = store.get('events', []);          // [{id,name,date,folderId,monthFolderId,groupResourceName,cards:[{id,name,webViewLink,thumb,contact,contactResourceName,status}]}]
+let currentEvId = store.get('currentEvId', null);
+let folderCache = store.get('folderCache', {}); // path -> id
+const saveAll = () => { store.set('settings', settings); store.set('events', events); store.set('currentEvId', currentEvId); store.set('folderCache', folderCache); };
+
+/* ---------- 유틸 ---------- */
+const $ = id => document.getElementById(id);
+const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+const pad = n => String(n).padStart(2,'0');
+const todayStr = () => { const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+const sanitize = s => (s||'').replace(/[\\/:*?"<>|]/g,' ').replace(/\s+/g,' ').trim();
+const pathOf = (ev) => { const [y,m] = ev.date.split('-'); return [settings.root, y, `${parseInt(m,10)}월`, sanitize(ev.name)]; };
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2600); }
+function setStatus(el, msg, cls){ el.style.display = msg? 'block':'none'; el.className = 'status' + (cls? ' '+cls:''); el.innerHTML = msg||''; }
+const esc = s => String(s??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ---------- Google 인증 (GIS 토큰 클라이언트) ---------- */
+let tokenClient = null, accessToken = null, tokenExp = 0, userEmail = store.get('userEmail','');
+function gisReady(){ return !!(window.google && google.accounts && google.accounts.oauth2); }
+function initTokenClient(){
+  if(!settings.clientId || !gisReady()) return false;
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: settings.clientId, scope: SCOPES, prompt: '',
+    callback: () => {}
+  });
+  return true;
+}
+function requestToken(interactive){
+  return new Promise((resolve, reject) => {
+    if(!tokenClient && !initTokenClient()) return reject(new Error('클라이언트 ID가 없거나 Google 스크립트가 아직 로드되지 않았습니다.'));
+    tokenClient.callback = (resp) => {
+      if(resp.error) return reject(new Error(resp.error_description || resp.error));
+      accessToken = resp.access_token; tokenExp = Date.now() + (resp.expires_in-60)*1000;
+      resolve(accessToken);
+    };
+    tokenClient.error_callback = (err) => reject(new Error(err?.message || err?.type || '로그인 취소'));
+    tokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' });
+  });
+}
+async function ensureToken(){
+  if(accessToken && Date.now() < tokenExp) return accessToken;
+  return requestToken(false);
+}
+async function gfetch(url, opts={}, retry=true){
+  const tok = await ensureToken();
+  const headers = Object.assign({ Authorization: 'Bearer '+tok }, opts.headers||{});
+  const res = await fetch(url, Object.assign({}, opts, { headers }));
+  if(res.status===401 && retry){ accessToken=null; return gfetch(url, opts, false); }
+  if(!res.ok){
+    let msg = res.status+' '+res.statusText;
+    try{ const j = await res.json(); msg = j.error?.message || JSON.stringify(j).slice(0,200); }catch(e){}
+    throw new Error(msg);
+  }
+  if(res.status===204) return null;
+  return res.json();
+}
+async function login(){
+  try{
+    settings.clientId = $('setClientId').value.trim(); saveAll();
+    tokenClient = null;
+    await requestToken(true);
+    const me = await gfetch('https://www.googleapis.com/oauth2/v3/userinfo');
+    userEmail = me.email || ''; store.set('userEmail', userEmail);
+    renderAuth(); toast('로그인 완료');
+  }catch(e){ setStatus($('authStatus'), '로그인 실패: '+esc(e.message), 'err'); }
+}
+function logout(){
+  if(accessToken && gisReady()) try{ google.accounts.oauth2.revoke(accessToken, ()=>{}); }catch(e){}
+  accessToken=null; tokenExp=0; userEmail=''; store.set('userEmail',''); renderAuth(); toast('로그아웃');
+}
+function renderAuth(){
+  $('acct').textContent = userEmail || '로그인 필요';
+  const ok = !!userEmail;
+  setStatus($('authStatus'), ok ? `연결됨: ${esc(userEmail)}` : (settings.clientId ? '로그인 버튼을 눌러 구글 계정을 연결하세요.' : '먼저 클라이언트 ID를 입력하세요. (설치 가이드 1단계)'), ok?'ok':'warn');
+  $('btnShoot').classList.toggle('disabled', !ok);
+}
+
+/* ---------- Drive: 폴더 ---------- */
+async function findOrCreateFolder(name, parentId){
+  const key = (parentId||'root')+'/'+name;
+  if(folderCache[key]) return folderCache[key];
+  const q = `name = '${name.replace(/'/g,"\\'")}' and mimeType = '${FOLDER_MIME}' and '${parentId||'root'}' in parents and trashed = false`;
+  const r = await gfetch('https://www.googleapis.com/drive/v3/files?fields=files(id,name)&q='+encodeURIComponent(q));
+  let id = r.files?.[0]?.id;
+  if(!id){
+    const c = await gfetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: [parentId||'root'] })
+    });
+    id = c.id;
+  }
+  folderCache[key]=id; saveAll(); return id;
+}
+async function ensureEventFolder(ev){
+  const segs = pathOf(ev);
+  let parent = null;
+  for(let i=0;i<segs.length-1;i++) parent = await findOrCreateFolder(segs[i], parent);
+  if(ev.folderId && ev.monthFolderId === parent) return ev.folderId;
+  // 기존 행사 폴더가 있고 위치/이름이 바뀐 경우 → 폴더 이동/이름 변경
+  if(ev.folderId){
+    const body = { name: segs[segs.length-1] };
+    let url = `https://www.googleapis.com/drive/v3/files/${ev.folderId}?fields=id`;
+    if(ev.monthFolderId && ev.monthFolderId !== parent) url += `&addParents=${parent}&removeParents=${ev.monthFolderId}`;
+    await gfetch(url, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    ev.monthFolderId = parent; saveAll(); return ev.folderId;
+  }
+  const id = await findOrCreateFolder(segs[segs.length-1], parent);
+  ev.folderId = id; ev.monthFolderId = parent; saveAll(); return id;
+}
+
+/* ---------- 이미지 처리 ---------- */
+async function loadBitmap(file){
+  try{ return await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+  catch(e){
+    return new Promise((res, rej) => { const img = new Image(); img.onload=()=>res(img); img.onerror=rej; img.src = URL.createObjectURL(file); });
+  }
+}
+async function processImage(file){
+  const bmp = await loadBitmap(file);
+  const w = bmp.width, h = bmp.height, maxPx = parseInt(settings.maxPx,10)||0;
+  let scale = 1; if(maxPx>0 && Math.max(w,h) > maxPx) scale = maxPx/Math.max(w,h);
+  const cw = Math.round(w*scale), ch = Math.round(h*scale);
+  const canvas = document.createElement('canvas'); canvas.width=cw; canvas.height=ch;
+  canvas.getContext('2d').drawImage(bmp, 0, 0, cw, ch);
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.88));
+  // 썸네일 (목록용, 작게)
+  const ts = 240/Math.max(cw,ch); const tc = document.createElement('canvas'); tc.width=Math.round(cw*ts); tc.height=Math.round(ch*ts);
+  tc.getContext('2d').drawImage(canvas,0,0,tc.width,tc.height);
+  const thumb = tc.toDataURL('image/jpeg', 0.6);
+  // OCR용 base64 (긴 변 1600)
+  const os = Math.min(1, 1600/Math.max(cw,ch)); const oc = document.createElement('canvas'); oc.width=Math.round(cw*os); oc.height=Math.round(ch*os);
+  oc.getContext('2d').drawImage(canvas,0,0,oc.width,oc.height);
+  const ocrB64 = oc.toDataURL('image/jpeg', 0.85).split(',')[1];
+  return { blob: blob || file, thumb, ocrB64 };
+}
+
+/* ---------- Drive: 업로드 ---------- */
+async function uploadToDrive(blob, name, folderId){
+  const meta = { name, parents:[folderId], mimeType:'image/jpeg' };
+  const boundary = 'cardbox_'+uid();
+  const head = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: image/jpeg\r\n\r\n`;
+  const body = new Blob([head, blob, `\r\n--${boundary}--`]);
+  return gfetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', {
+    method:'POST', headers:{'Content-Type':`multipart/related; boundary=${boundary}`}, body
+  });
+}
+
+/* ---------- 촬영 → 업로드 파이프라인 ---------- */
+let seq = 0;
+async function handleFiles(files){
+  const ev = currentEvent();
+  if(!userEmail){ toast('먼저 설정에서 구글 로그인을 해주세요'); showView('settings'); return; }
+  if(!ev){ openEvModal(null); return; }
+  const st = $('shootStatus');
+  let done=0, fail=0;
+  for(const file of files){
+    const card = { id: uid(), status:'run', name:'', thumb:'', webViewLink:'', contact:null, ocrB64:null, createdAt: Date.now() };
+    ev.cards.unshift(card); renderCards();
+    try{
+      setStatus(st, `<span class="spin"></span>처리 중 ${done+fail+1}/${files.length} — 이미지 압축`, 'warn');
+      const { blob, thumb, ocrB64 } = await processImage(file);
+      card.thumb = thumb; sessionOcr[card.id] = ocrB64;
+      setStatus(st, `<span class="spin"></span>처리 중 ${done+fail+1}/${files.length} — 드라이브 업로드`, 'warn');
+      const folderId = await ensureEventFolder(ev);
+      const d = new Date(); seq = (seq%99)+1;
+      const fname = `${todayStr()}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}_${sanitize(ev.name)}_${pad(seq)}.jpg`;
+      const r = await uploadToDrive(blob, fname, folderId);
+      card.name = r.name; card.driveId = r.id; card.webViewLink = r.webViewLink; card.status='ok';
+      done++;
+      saveAll(); renderCards();
+      if(settings.autoOcr && settings.anthropicKey){ runOcr(card).catch(()=>{}); }
+    }catch(e){
+      card.status='err'; card.error = e.message; fail++; saveAll(); renderCards();
+    }
+  }
+  setStatus(st, fail? `${done}장 저장, ${fail}장 실패 (목록에서 다시 시도)` : `${done}장 저장 완료 → ${esc(pathOf(ev).join(' / '))}`, fail?'err':'ok');
+  setTimeout(()=>setStatus(st,'',''), 6000);
+}
+const sessionOcr = {}; // card.id -> base64 (이 세션에서만 보관)
+
+/* ---------- Claude OCR ---------- */
+async function runOcr(card){
+  if(!settings.anthropicKey) throw new Error('설정에서 Anthropic API 키를 입력하세요.');
+  let b64 = sessionOcr[card.id];
+  if(!b64){
+    // 세션에 없으면 드라이브에서 내려받아 사용
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${card.driveId}?alt=media`, { headers:{ Authorization:'Bearer '+await ensureToken() } });
+    if(!res.ok) throw new Error('드라이브에서 이미지를 가져오지 못했습니다.');
+    const blob = await res.blob();
+    const p = await processImage(blob); b64 = p.ocrB64; sessionOcr[card.id]=b64;
+  }
+  card.ocrStatus='run'; renderCards();
+  const prompt = `이 이미지는 명함입니다. 다음 JSON 스키마로만 응답하세요(설명 금지, 값이 없으면 빈 문자열):
+{"name":"한글 또는 현지어 이름","name_en":"영문 이름","company":"회사명","title":"직함","department":"부서","mobile":"휴대전화(국가코드 포함 형식 유지)","phone":"사무실/대표 전화","email":"이메일","website":"웹사이트","address":"주소 한 줄","note":"그 외 표기된 정보(팩스, SNS 등)"}`;
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'x-api-key': settings.anthropicKey, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
+    body: JSON.stringify({ model: settings.model||'claude-haiku-5-5', max_tokens: 600, messages:[{ role:'user', content:[
+      { type:'image', source:{ type:'base64', media_type:'image/jpeg', data:b64 } },
+      { type:'text', text: prompt }
+    ]}]})
+  });
+  if(!res.ok){ card.ocrStatus='err'; renderCards(); const t = await res.text(); throw new Error('인식 실패: '+t.slice(0,160)); }
+  const j = await res.json();
+  const text = (j.content||[]).map(c=>c.text||'').join('');
+  const m = text.match(/\{[\s\S]*\}/);
+  if(!m){ card.ocrStatus='err'; renderCards(); throw new Error('인식 결과를 해석하지 못했습니다.'); }
+  const data = JSON.parse(m[0]);
+  card.contact = Object.assign(card.contact||{}, data);
+  card.ocrStatus='ok'; saveAll(); renderCards();
+  return data;
+}
+
+/* ---------- Google Contacts ---------- */
+async function ensureGroup(ev){
+  if(ev.groupResourceName) return ev.groupResourceName;
+  const [y,m] = ev.date.split('-');
+  const name = `명함 ${y}-${m} ${sanitize(ev.name)}`;
+  // 기존 그룹 검색
+  const list = await gfetch('https://people.googleapis.com/v1/contactGroups?pageSize=200');
+  const found = (list.contactGroups||[]).find(g => g.name===name);
+  if(found){ ev.groupResourceName = found.resourceName; saveAll(); return found.resourceName; }
+  const g = await gfetch('https://people.googleapis.com/v1/contactGroups', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ contactGroup:{ name } }) });
+  ev.groupResourceName = g.resourceName; saveAll(); return g.resourceName;
+}
+async function saveContact(ev, card, c){
+  const group = await ensureGroup(ev);
+  const [y,m] = ev.date.split('-');
+  const noteParts = [`${y}년 ${parseInt(m,10)}월 "${ev.name}"에서 받은 명함`];
+  if(card.webViewLink) noteParts.push('명함 이미지: '+card.webViewLink);
+  if(c.note) noteParts.push(c.note);
+  const person = {
+    names: [{ givenName: c.name || c.name_en || '(이름 미상)' }],
+    organizations: (c.company||c.title||c.department) ? [{ name:c.company||'', title:c.title||'', department:c.department||'' }] : [],
+    emailAddresses: c.email ? [{ value:c.email, type:'work' }] : [],
+    phoneNumbers: [ c.mobile ? { value:c.mobile, type:'mobile' } : null, c.phone ? { value:c.phone, type:'work' } : null ].filter(Boolean),
+    urls: c.website ? [{ value:c.website, type:'work' }] : [],
+    addresses: c.address ? [{ formattedValue:c.address, type:'work' }] : [],
+    biographies: [{ value: noteParts.join('\n'), contentType:'TEXT_PLAIN' }],
+    memberships: [{ contactGroupMembership:{ contactGroupResourceName: group } }]
+  };
+  if(c.name_en && c.name) person.nicknames = [{ value: c.name_en }];
+  if(card.contactResourceName){
+    // 이미 저장된 연락처 → 업데이트
+    const cur = await gfetch(`https://people.googleapis.com/v1/${card.contactResourceName}?personFields=names`);
+    person.etag = cur.etag;
+    const fields = 'names,nicknames,organizations,emailAddresses,phoneNumbers,urls,addresses,biographies,memberships';
+    const r = await gfetch(`https://people.googleapis.com/v1/${card.contactResourceName}:updateContact?updatePersonFields=${fields}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(person) });
+    return r.resourceName;
+  }
+  const r = await gfetch('https://people.googleapis.com/v1/people:createContact', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(person) });
+  return r.resourceName;
+}
+
+/* ---------- 행사 ---------- */
+function currentEvent(){ return events.find(e=>e.id===currentEvId) || null; }
+let editingEvId = null;
+function openEvModal(id){
+  editingEvId = id;
+  const ev = id ? events.find(e=>e.id===id) : null;
+  $('evModalTitle').textContent = ev ? '행사 수정' : '새 행사';
+  $('evName').value = ev ? ev.name : '';
+  $('evDate').value = ev ? ev.date : todayStr();
+  $('evDelete').style.display = ev ? 'block' : 'none';
+  setStatus($('evModalStatus'),'','');
+  updateFolderPreview();
+  $('evModal').classList.add('open');
+  setTimeout(()=>$('evName').focus(), 50);
+}
+function updateFolderPreview(){
+  const name = $('evName').value.trim(), date = $('evDate').value;
+  if(!name || !date){ $('evFolderPreview').textContent=''; return; }
+  $('evFolderPreview').textContent = '저장 폴더: ' + pathOf({name, date}).join(' / ');
+}
+async function saveEvModal(){
+  const name = sanitize($('evName').value), date = $('evDate').value;
+  if(!name || !date){ setStatus($('evModalStatus'),'행사명과 날짜를 입력하세요.','err'); return; }
+  const st = $('evModalStatus');
+  if(editingEvId){
+    const ev = events.find(e=>e.id===editingEvId);
+    const changed = ev.name!==name || ev.date!==date;
+    ev.name = name; ev.date = date;
+    if(changed && ev.folderId && userEmail){
+      try{ setStatus(st,'<span class="spin"></span>드라이브 폴더 이동 중…','warn'); $('evSave').disabled=true; await ensureEventFolder(ev); }
+      catch(e){ setStatus(st,'폴더 이동 실패: '+esc(e.message)+' (다음 업로드 때 다시 시도됩니다)','err'); ev.monthFolderId=null; }
+      finally{ $('evSave').disabled=false; }
+    }
+    if(changed) ev.groupResourceName = null; // 라벨은 새 이름으로 다시 생성
+  }else{
+    const ev = { id: uid(), name, date, folderId:null, monthFolderId:null, groupResourceName:null, cards:[] };
+    events.unshift(ev); currentEvId = ev.id;
+  }
+  saveAll(); renderAll(); $('evModal').classList.remove('open');
+}
+function deleteEv(){
+  if(!editingEvId) return;
+  const ev = events.find(e=>e.id===editingEvId);
+  if(!window._confirmDel || window._confirmDel!==editingEvId){ window._confirmDel = editingEvId; setStatus($('evModalStatus'),`"${esc(ev.name)}"을(를) 목록에서 지우려면 삭제 버튼을 한 번 더 누르세요. 드라이브의 사진과 연락처는 그대로 남습니다.`,'warn'); return; }
+  events = events.filter(e=>e.id!==editingEvId);
+  if(currentEvId===editingEvId) currentEvId = events[0]?.id || null;
+  window._confirmDel=null; saveAll(); renderAll(); $('evModal').classList.remove('open');
+}
+
+/* ---------- 연락처 시트 ---------- */
+let ctCard = null;
+function openContact(card){
+  ctCard = card; const ev = currentEvent();
+  $('ctPreview').src = card.thumb || '';
+  $('ctOpenDrive').href = card.webViewLink || '#';
+  $('ctOpenDrive').style.visibility = card.webViewLink ? 'visible' : 'hidden';
+  fillContactForm(card.contact||{});
+  setStatus($('ctStatus'), card.contactResourceName ? '이미 구글 연락처에 저장됨 — 수정 후 저장하면 업데이트됩니다.' : (settings.anthropicKey ? (card.contact? '' : '"AI로 다시 인식"을 누르거나 직접 입력하세요.') : '직접 입력하거나, 설정에서 API 키를 넣으면 자동 인식됩니다.'), card.contactResourceName?'ok':'');
+  $('ctModal').classList.add('open');
+  if(settings.anthropicKey && !card.contact && card.driveId) doOcrFromSheet();
+}
+function fillContactForm(c){
+  $('cName').value=c.name||''; $('cNameEn').value=c.name_en||''; $('cCompany').value=c.company||''; $('cTitle').value=c.title||'';
+  $('cDept').value=c.department||''; $('cMobile').value=c.mobile||''; $('cPhone').value=c.phone||''; $('cEmail').value=c.email||'';
+  $('cWeb').value=c.website||''; $('cAddr').value=c.address||''; $('cNote').value=c.note||'';
+}
+function readContactForm(){
+  return { name:$('cName').value.trim(), name_en:$('cNameEn').value.trim(), company:$('cCompany').value.trim(), title:$('cTitle').value.trim(),
+    department:$('cDept').value.trim(), mobile:$('cMobile').value.trim(), phone:$('cPhone').value.trim(), email:$('cEmail').value.trim(),
+    website:$('cWeb').value.trim(), address:$('cAddr').value.trim(), note:$('cNote').value.trim() };
+}
+async function doOcrFromSheet(){
+  if(!ctCard) return;
+  setStatus($('ctStatus'),'<span class="spin"></span>명함 인식 중…','warn'); $('ctOcr').disabled=true;
+  try{ const d = await runOcr(ctCard); fillContactForm(d); setStatus($('ctStatus'),'인식 완료 — 내용을 확인하고 저장하세요.','ok'); }
+  catch(e){ setStatus($('ctStatus'), esc(e.message), 'err'); }
+  finally{ $('ctOcr').disabled=false; }
+}
+async function doSaveContact(){
+  if(!ctCard) return; const ev = currentEvent(); const c = readContactForm();
+  if(!c.name && !c.name_en && !c.email){ setStatus($('ctStatus'),'이름 또는 이메일은 필요합니다.','err'); return; }
+  setStatus($('ctStatus'),'<span class="spin"></span>구글 연락처 저장 중…','warn'); $('ctSave').disabled=true;
+  try{
+    ctCard.contact = c;
+    ctCard.contactResourceName = await saveContact(ev, ctCard, c);
+    saveAll(); renderCards();
+    setStatus($('ctStatus'),`저장 완료 — 연락처 라벨 "명함 ${ev.date.slice(0,7)} ${esc(ev.name)}"`,'ok');
+    toast('구글 연락처에 저장되었습니다');
+  }catch(e){ setStatus($('ctStatus'),'저장 실패: '+esc(e.message),'err'); }
+  finally{ $('ctSave').disabled=false; }
+}
+
+/* ---------- 렌더 ---------- */
+function renderEvSelect(){
+  const sel = $('evSelect'); sel.innerHTML='';
+  if(!events.length){ sel.innerHTML = '<option value="">행사를 먼저 만드세요</option>'; $('evPath').textContent=''; return; }
+  for(const ev of events){ const o=document.createElement('option'); o.value=ev.id; o.textContent=`${ev.name} (${ev.date})`; sel.appendChild(o); }
+  if(!currentEvent()) currentEvId = events[0].id;
+  sel.value = currentEvId;
+  $('evPath').textContent = '저장 폴더: ' + pathOf(currentEvent()).join(' / ');
+}
+function renderCards(){
+  const ev = currentEvent(); const list = $('cardList'); list.innerHTML='';
+  const cards = ev ? ev.cards : [];
+  $('cardCount').textContent = cards.length;
+  if(!cards.length){ list.innerHTML = '<div class="empty">아직 저장된 명함이 없습니다.</div>'; return; }
+  for(const c of cards){
+    const el = document.createElement('div'); el.className='item';
+    const badge = c.status==='run' ? '<span class="badge run">업로드 중</span>' : c.status==='err' ? '<span class="badge err">실패</span>' : '<span class="badge ok">드라이브 저장</span>';
+    const ct = c.contactResourceName ? '<span class="badge ok">연락처 저장됨</span>' : c.ocrStatus==='run' ? '<span class="badge run">인식 중</span>' : c.contact?.name ? `<span class="badge">${esc(c.contact.name)}</span>` : '';
+    el.innerHTML = `<img src="${c.thumb||''}" alt=""><div class="meta"><div class="t">${esc(c.contact?.name || c.name || '처리 중…')}${c.contact?.company? ' · '+esc(c.contact.company):''}</div><div class="s">${badge} ${ct}${c.status==='err'?'<br>'+esc(c.error||''):''}</div></div>`;
+    const btn = document.createElement('button'); btn.className='ghost';
+    if(c.status==='err'){ btn.textContent='삭제'; btn.onclick=()=>{ ev.cards = ev.cards.filter(x=>x!==c); saveAll(); renderCards(); }; }
+    else { btn.textContent = c.contactResourceName ? '보기' : '연락처'; btn.disabled = c.status!=='ok'; btn.onclick=()=>openContact(c); }
+    el.appendChild(btn); list.appendChild(el);
+  }
+}
+function renderEvList(){
+  const box = $('evList'); box.innerHTML='';
+  if(!events.length){ box.innerHTML='<div class="empty">행사가 없습니다.</div>'; return; }
+  for(const ev of events){
+    const el = document.createElement('div'); el.className='ev';
+    el.innerHTML = `<div><div class="n">${esc(ev.name)}</div><div class="d">${ev.date} · ${ev.cards.length}장 · ${esc(pathOf(ev).slice(1).join('/'))}</div></div>`;
+    const b = document.createElement('button'); b.className='ghost'; b.textContent='수정'; b.onclick=()=>openEvModal(ev.id);
+    el.appendChild(b); box.appendChild(el);
+  }
+}
+function renderSettings(){
+  $('setClientId').value = settings.clientId; $('setRoot').value = settings.root; $('setMaxPx').value = settings.maxPx;
+  $('setAnthropicKey').value = settings.anthropicKey; $('setModel').value = settings.model; $('setAutoOcr').checked = !!settings.autoOcr;
+}
+function renderAll(){ renderEvSelect(); renderCards(); renderEvList(); renderSettings(); renderAuth(); }
+function showView(v){
+  document.querySelectorAll('.view').forEach(s=>s.classList.toggle('active', s.id==='view-'+v));
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
+}
+
+/* ---------- 이벤트 바인딩 ---------- */
+document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>showView(b.dataset.view));
+$('evSelect').onchange = e => { currentEvId = e.target.value; saveAll(); renderEvSelect(); renderCards(); };
+$('btnNewEv').onclick = () => openEvModal(null);
+$('btnNewEv2').onclick = () => openEvModal(null);
+$('evCancel').onclick = () => { $('evModal').classList.remove('open'); window._confirmDel=null; };
+$('evSave').onclick = saveEvModal;
+$('evDelete').onclick = deleteEv;
+$('evName').oninput = updateFolderPreview; $('evDate').onchange = updateFolderPreview;
+$('btnShoot').onclick = () => { if(!userEmail){ showView('settings'); toast('먼저 구글 로그인을 해주세요'); return; } if(!currentEvent()){ openEvModal(null); return; } $('fileInput').click(); };
+$('btnGallery').onclick = () => { if(!userEmail){ showView('settings'); return; } if(!currentEvent()){ openEvModal(null); return; } $('fileInputGallery').click(); };
+$('fileInput').onchange = e => { const f=[...e.target.files]; e.target.value=''; if(f.length) handleFiles(f); };
+$('fileInputGallery').onchange = e => { const f=[...e.target.files]; e.target.value=''; if(f.length) handleFiles(f); };
+$('btnLogin').onclick = login; $('btnLogout').onclick = logout;
+$('btnSaveSettings').onclick = () => {
+  settings.clientId = $('setClientId').value.trim(); settings.root = sanitize($('setRoot').value)||'명함';
+  settings.maxPx = parseInt($('setMaxPx').value,10)||0; settings.anthropicKey = $('setAnthropicKey').value.trim();
+  settings.model = $('setModel').value.trim()||'claude-haiku-5-5'; settings.autoOcr = $('setAutoOcr').checked;
+  folderCache = {}; tokenClient=null; saveAll(); renderAll(); toast('설정 저장됨');
+};
+$('ctCancel').onclick = () => $('ctModal').classList.remove('open');
+$('ctOcr').onclick = doOcrFromSheet;
+$('ctSave').onclick = doSaveContact;
+document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => { if(e.target===m) m.classList.remove('open'); }));
+
+renderAll();
+if(!settings.clientId) showView('settings');
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
