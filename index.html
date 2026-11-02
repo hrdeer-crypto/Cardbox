@@ -254,7 +254,7 @@ const esc = s => String(s??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;'
 let userEmail = store.get('userEmail','');
 let tok = store.get('token', null); // {access, exp}
 const clientId = () => BUILT_IN_CLIENT_ID || settings.clientId;
-const redirectUri = () => location.origin + location.pathname;
+const redirectUri = () => location.origin + location.pathname.replace(/index\.html$/,'');
 function tokenValid(margin=60){ return !!(tok && tok.access && Date.now() < tok.exp - margin*1000); }
 function login(interactive){
   if(!clientId()){ showView('settings'); toast('클라이언트 ID가 필요합니다'); return; }
@@ -271,7 +271,7 @@ function handleAuthReturn(){
   if(!location.hash || location.hash.length < 2) return false;
   const h = new URLSearchParams(location.hash.slice(1));
   if(!h.get('access_token') && !h.get('error')) return false;
-  history.replaceState(null, '', location.pathname + location.search);
+  history.replaceState(null, '', location.pathname.replace(/index\.html$/,'') + location.search);
   if(h.get('error')){
     // prompt=none 실패(세션 없음 등) → 조용히 로그인 버튼만 보여줌
     tok = null; store.set('token', null);
